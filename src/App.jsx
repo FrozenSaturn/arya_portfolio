@@ -4,6 +4,7 @@ import Feed from "./components/Feed";
 import RightRail from "./components/RightRail";
 import Placeholder from "./components/Placeholder";
 import { MessageSquarePlus } from "lucide-react";
+import Profile from "./components/Profile";
 
 function DMButton() {
   return (
@@ -17,12 +18,14 @@ function DMButton() {
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState("Home");
+  const [activeTab, setActiveTab] = useState("Profile");
 
   const renderCenter = () => {
     if (activeTab === "Home") return <Feed />;
+    if (activeTab === "Profile") return <Profile />;
     return <Placeholder title={activeTab} />;
   };
+  
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white">
