@@ -17,79 +17,9 @@ import {
 import RightRail from "./RightRail";
 import Avatar from "./common/Avatar";
 import { RESUME_PROFILE } from "../constants/profile";
+import { fetchTweets, createTweet, likeTweet, repostTweet, addComment, incrementView } from "../services/tweets";
 
 const cx = (...c) => c.filter(Boolean).join(" ");
-
-// Backend plumbing – swap these with real API calls later
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
-
-async function loadFeed() {
-  return Promise.resolve([
-    {
-      id: "1",
-      author: { name: "Mark V.", handle: "@markv", verified: true },
-      time: "Aug 14",
-      text:
-        "Switching my stack: lower fees, crypto transfers, more features — shipping this week.",
-      media: {
-        kind: "image",
-        src: "https://images.unsplash.com/photo-1551281044-8b57acd1f3df?q=80&w=1200&auto=format&fit=crop",
-      },
-      stats: { replies: 42, reposts: 273, likes: 388, views: "64K" },
-    },
-    {
-      id: "2",
-      author: {
-        name: RESUME_PROFILE.name,
-        handle: RESUME_PROFILE.handle,
-        verified: RESUME_PROFILE.verified,
-      },
-      time: "Aug 15",
-      text:
-        "Shipped an Explainable AI cricket predictor (React + Django + FastAPI). LLM explains win odds. CV macro F1 ≈ 0.54.",
-      media: null,
-      stats: { replies: 12, reposts: 58, likes: 312, views: "12.3K" },
-      links: [
-        {
-          title: "IPL Insight Engine — project",
-          url: "https://github.com/FrozenSaturn/ipl_predictor",
-          desc: "Explainable predictions with feature attributions and LLM Q&A.",
-          domain: "github.com",
-        },
-      ],
-    },
-    {
-      id: "3",
-      author: { name: "CollegeTips.in", handle: "@collegetips", verified: true },
-      time: "Aug 10",
-      text:
-        "Rolled out a digital literacy bot with TTS for seniors. React Native + Dialogflow + Gemini API.",
-      media: null,
-      stats: { replies: 6, reposts: 37, likes: 190, views: "9,842" },
-    },
-    {
-      id: "4",
-      author: {
-        name: RESUME_PROFILE.name,
-        handle: RESUME_PROFILE.handle,
-        verified: RESUME_PROFILE.verified,
-      },
-      time: "Aug 09",
-      text:
-        "AskAway: a RAG chatbot for PDFs (Streamlit + LangChain + FAISS). Upload, chat, cite, done.",
-      media: null,
-      stats: { replies: 9, reposts: 41, likes: 276, views: "15.1K" },
-      links: [
-        {
-          title: "AskAway — live demo",
-          url: "https://rag-langchain-chatbot.streamlit.app/",
-          desc: "Conversational PDF Q&A with memory and MMR retrieval.",
-          domain: "streamlit.app",
-        },
-      ],
-    },
-  ]);
-}
 
 async function loadTrends() {
   return Promise.resolve([
@@ -136,11 +66,13 @@ function Pill({ children, active = false }) {
   );
 }
 
-function Stat({ icon: Icon, text }) {
+function Stat({ icon: Icon, text, onClick, ariaLabel }) {
   return (
     <button
       className="group inline-flex items-center gap-1.5 text-zinc-400 hover:text-sky-400 transition"
-      aria-label={typeof text === "string" ? text : undefined}
+      aria-label={ariaLabel || (typeof text === "string" ? text : undefined)}
+      onClick={onClick}
+      type="button"
     >
       <Icon className="h-4 w-4" />
       <span className="text-xs tabular-nums">{text}</span>
@@ -148,7 +80,11 @@ function Stat({ icon: Icon, text }) {
   );
 }
 
-function TweetCard({ t }) {
+function TweetCard({ t, onLike, onRepost, onView, onReply }) {
+  const [replyOpen, setReplyOpen] = useState(false);
+  const [reply, setReply] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
   return (
     <article className="flex gap-3 px-4 py-3 hover:bg-white/5 transition border-b border-white/10">
       <Avatar name={t.author.name} />
@@ -200,13 +136,49 @@ function TweetCard({ t }) {
         )}
 
         <div className="mt-3 flex items-center justify-between pr-6 max-w-[520px]">
-          <Stat icon={MessageCircle} text={t.stats.replies} />
-          <Stat icon={Repeat2} text={t.stats.reposts} />
-          <Stat icon={Heart} text={t.stats.likes} />
-          <Stat icon={BarChart2} text={t.stats.views} />
-          <Stat icon={Bookmark} text="Save" />
-          <Stat icon={Share} text="Share" />
+          <Stat icon={MessageCircle} text={t.stats.replies} ariaLabel="Reply" onClick={() => setReplyOpen((v) => !v)} />
+          <Stat icon={Repeat2} text={t.stats.reposts} ariaLabel="Repost" onClick={onRepost} />
+          <Stat icon={Heart} text={t.stats.likes} ariaLabel="Like" onClick={onLike} />
+          <Stat icon={BarChart2} text={t.stats.views} ariaLabel="View" onClick={onView} />
+          <Stat icon={Bookmark} text="Save" ariaLabel="Save" />
+          <Stat icon={Share} text="Share" ariaLabel="Share" />
         </div>
+
+        {replyOpen && (
+          <div className="mt-2 flex items-start gap-2 max-w-[520px]">
+            <Avatar name={RESUME_PROFILE.name} />
+            <div className="flex-1">
+              <textarea
+                value={reply}
+                onChange={(e) => setReply(e.target.value)}
+                placeholder="Post your reply"
+                className="w-full resize-none bg-transparent placeholder:text-zinc-500 text-[15px] outline-none text-white min-h-[40px]"
+                rows={2}
+              />
+              <div className="mt-2 flex justify-end">
+                <button
+                  disabled={!reply.trim() || submitting}
+                  onClick={async () => {
+                    if (!reply.trim()) return;
+                    setSubmitting(true);
+                    try {
+                      await onReply(reply);
+                      setReply("");
+                      setReplyOpen(false);
+                    } finally {
+                      setSubmitting(false);
+                    }
+                  }}
+                  className={cx(
+                    "rounded-full bg-white px-3 py-1 text-sm font-semibold text-black transition disabled:opacity-60 disabled:cursor-not-allowed"
+                  )}
+                >
+                  {submitting ? "Replying..." : "Reply"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
       <button
         className="self-start p-1 text-zinc-400 hover:text-white rounded-full hover:bg-white/10"
@@ -220,7 +192,8 @@ function TweetCard({ t }) {
 
 function Composer({ onPost }) {
   const [value, setValue] = useState("");
-  const canPost = value.trim().length > 0;
+  const [posting, setPosting] = useState(false);
+  const canPost = value.trim().length > 0 && !posting;
   return (
     <div className="flex gap-3 px-4 py-3 border-b border-white/10">
       <Avatar name={RESUME_PROFILE.name} />
@@ -255,16 +228,22 @@ function Composer({ onPost }) {
           </div>
           <button
             disabled={!canPost}
-            onClick={() => {
+            onClick={async () => {
               if (!canPost) return;
-              onPost(value);
-              setValue("");
+              try {
+                setPosting(true);
+                const created = await createTweet(value, RESUME_PROFILE);
+                onPost(created);
+                setValue("");
+              } finally {
+                setPosting(false);
+              }
             }}
             className={cx(
               "rounded-full bg-white px-4 py-1.5 text-sm font-semibold text-black transition disabled:opacity-60 disabled:cursor-not-allowed"
             )}
           >
-            Post
+            {posting ? "Posting..." : "Post"}
           </button>
         </div>
       </div>
@@ -278,26 +257,21 @@ export default function Feed() {
   const [who, setWho] = useState([]);
 
   useEffect(() => {
-    loadFeed().then(setFeed);
+    fetchTweets().then(setFeed);
     loadTrends().then(setTrends);
     loadWhoToFollow().then(setWho);
   }, []);
 
-  function handlePost(text) {
-    const newTweet = {
-      id: String(Date.now()),
-      author: {
-        name: RESUME_PROFILE.name,
-        handle: RESUME_PROFILE.handle,
-        verified: RESUME_PROFILE.verified,
-      },
-      time: "now",
-      text,
-      media: null,
-      stats: { replies: 0, reposts: 0, likes: 0, views: "0" },
-    };
-    setFeed((f) => [newTweet, ...f]);
-    // fetch(`${API_BASE_URL}/tweet`, { method: 'POST', body: JSON.stringify({ text }) })
+  function handlePost(createdTweet) {
+    setFeed((f) => [createdTweet, ...f]);
+  }
+
+  async function updateWith(serverUpdated) {
+    setFeed((f) => f.map((t) => (t.id === serverUpdated.id ? serverUpdated : t)));
+  }
+
+  function optimisticUpdate(id, changeFn) {
+    setFeed((f) => f.map((t) => (t.id === id ? changeFn(t) : t)));
   }
 
   return (
@@ -320,7 +294,71 @@ export default function Feed() {
 
       <div>
         {feed.map((t) => (
-          <TweetCard key={t.id} t={t} />
+          <TweetCard
+            key={t.id}
+            t={t}
+            onLike={async () => {
+              optimisticUpdate(t.id, (cur) => ({
+                ...cur,
+                stats: { ...cur.stats, likes: (cur.stats.likes ?? 0) + 1 },
+              }));
+              try {
+                const updated = await likeTweet(t.id, 1);
+                await updateWith(updated);
+              } catch (e) {
+                // revert
+                optimisticUpdate(t.id, (cur) => ({
+                  ...cur,
+                  stats: { ...cur.stats, likes: Math.max(0, (cur.stats.likes ?? 1) - 1) },
+                }));
+                console.error("like error", e);
+              }
+            }}
+            onRepost={async () => {
+              optimisticUpdate(t.id, (cur) => ({
+                ...cur,
+                stats: { ...cur.stats, reposts: (cur.stats.reposts ?? 0) + 1 },
+              }));
+              try {
+                const updated = await repostTweet(t.id, 1);
+                await updateWith(updated);
+              } catch (e) {
+                optimisticUpdate(t.id, (cur) => ({
+                  ...cur,
+                  stats: { ...cur.stats, reposts: Math.max(0, (cur.stats.reposts ?? 1) - 1) },
+                }));
+                console.error("repost error", e);
+              }
+            }}
+            onView={async () => {
+              // optional: bump views
+              try {
+                const updated = await incrementView(t.id, 1);
+                await updateWith(updated);
+              } catch (e) {
+                console.error("view error", e);
+              }
+            }}
+            onReply={async (text) => {
+              // optimistic bump replies
+              optimisticUpdate(t.id, (cur) => ({
+                ...cur,
+                stats: { ...cur.stats, replies: (cur.stats.replies ?? 0) + 1 },
+              }));
+              try {
+                const updated = await addComment(t.id, text, RESUME_PROFILE);
+                await updateWith(updated);
+              } catch (e) {
+                // revert replies bump
+                optimisticUpdate(t.id, (cur) => ({
+                  ...cur,
+                  stats: { ...cur.stats, replies: Math.max(0, (cur.stats.replies ?? 1) - 1) },
+                }));
+                console.error("reply error", e);
+                throw e;
+              }
+            }}
+          />
         ))}
       </div>
 

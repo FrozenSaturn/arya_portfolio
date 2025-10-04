@@ -1,10 +1,13 @@
+// src/App.jsx
 import React, { useState } from "react";
 import LeftNav from "./components/LeftNav";
 import Feed from "./components/Feed";
 import RightRail from "./components/RightRail";
 import Placeholder from "./components/Placeholder";
-import { MessageSquarePlus } from "lucide-react";
 import Profile from "./components/Profile";
+import Experience from "./components/Experience";
+import AI from "./components/AI";
+import { MessageSquarePlus } from "lucide-react";
 
 function DMButton() {
   return (
@@ -23,16 +26,18 @@ export default function App() {
   const renderCenter = () => {
     if (activeTab === "Home") return <Feed />;
     if (activeTab === "Profile") return <Profile />;
+    if (activeTab === "Experience") return <Experience />;
+    if (activeTab === "AI") return <AI />;
     return <Placeholder title={activeTab} />;
   };
-  
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white">
       <div className="mx-auto max-w-[1265px] flex gap-0 sm:gap-3">
         <LeftNav activeTab={activeTab} onSelect={setActiveTab} />
         {renderCenter()}
-        <RightRail trends={[]} who={[]} />
+        {/* Conditionally render the RightRail */}
+        {activeTab !== "AI" && <RightRail trends={[]} who={[]} />}
       </div>
       <DMButton />
     </div>
